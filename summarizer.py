@@ -107,13 +107,6 @@ class RealTimeSummarizer:
         else:
             # Just return the number of new messages
             return f"*{len(unseen_messages)} new messages since you last checked.*"
-    def is_session_active(self):
-        """Check whether the summarization session is active (model is loaded)."""
-        return self.model_loaded
-    def get_entries(self):
-        """Check whether the summarization session is active (model is loaded)."""
-        return self.model_loaded
-    
 
 # Conversational summary backtracking
 class SummaryExplorer:
