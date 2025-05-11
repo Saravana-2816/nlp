@@ -111,8 +111,28 @@ class RealTimeSummarizer:
         """Check whether the summarization session is active (model is loaded)."""
         return self.model_loaded
     def get_entries(self):
-        """Check whether the summarization session is active (model is loaded)."""
-        return self.model_loaded
+        """Return all messages (including unsummarized ones)."""
+        # Combine unsummarized buffer and all summarized messages
+        entries = []
+
+        # Add summaries from history
+        for summary in self.summary_history:
+            for msg in summary['original_messages']:
+                entries.append({
+                    "timestamp": msg["timestamp"],
+                    "text": msg["message"]
+                })
+
+        # Add unsummarized buffer messages
+        for msg in self.message_buffer:
+            entries.append({
+                "timestamp": msg["timestamp"],
+                "text": msg["message"]
+            })
+
+        return entries
+
+
     
 
 # Conversational summary backtracking

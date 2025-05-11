@@ -234,6 +234,8 @@ def analyze_sentiment(text, nlp=None):
         elif polarity < -0.2:
             return "negative", polarity
         else:
+            st.info("No entries to display.")
+            st.error("No entries to display.")
             return "neutral", polarity
     except Exception as e:
         return "neutral", 0
@@ -1070,7 +1072,8 @@ def main():
             
             if st.button("Add to Session"):
                 if new_entry.strip():
-                    st.session_state.realtime_summarizer.add_entry(new_entry)
+                    st.session_state.realtime_summarizer.add_message(new_entry)
+
                     st.success("Note added!")
                     # Clear the input
                     st.session_state.realtime_notes = ""
@@ -1083,20 +1086,33 @@ def main():
             
             entries = st.session_state.realtime_summarizer.get_entries()
             
-            for i, entry in enumerate(entries):
-                st.markdown(
-                    f"""<div class="chat-message user-message">
-                    <b>Entry {i+1}</b> ({entry['timestamp'].strftime("%H:%M:%S")})<br>
-                    {entry['text']}
-                    </div>""",
-                    unsafe_allow_html=True
-                )
+from datetime import datetime
+
+entries = st.session_state.realtime_summarizer.get_entries() if st.session_state.realtime_summarizer.is_session_active() else []
+for i, entry in enumerate(entries):
+    # Ensure timestamp is a datetime object
+    if isinstance(entry['timestamp'], str):
+        entry_time = datetime.strptime(entry['timestamp'], "%Y-%m-%d %H:%M:%S")  # or adjust format as needed
+    else:
+        entry_time = entry['timestamp']
+
+    st.markdown(
+        f"""<div class="chat-message user-message">
+        <b>Entry {i+1}</b> ({entry_time.strftime("%H:%M:%S")})<br>
+        {entry['text']}
+        </div>""",
+        unsafe_allow_html=True
+    )
+
+
             
             # Display real-time summary
-            st.markdown("### Current Summary")
+    st.markdown("### Current Summary")
             
-            if entries:
+    if entries:
                 # Generate summary
+                if 'summarization_model' not in locals():
+                    summarization_model, model_loaded = load_summarization_model()
                 current_summary = st.session_state.realtime_summarizer.get_current_summary(summarizer=summarization_model)
                 
                 st.markdown(
@@ -1108,15 +1124,17 @@ def main():
                 )
                 
                 # Key points extraction
+                if 'nlp' not in locals() or nlp is None:
+                    nlp = load_spacy_model() if check_spacy_model() else None
                 key_points = st.session_state.realtime_summarizer.extract_key_points(nlp)
                 
                 if key_points:
                     st.markdown("### Key Points")
                     for point in key_points:
                         st.markdown(f"- {point}")
-            else:
+    else:
                 st.info("Add some notes to generate a summary.")
-        else:
+else:
             st.info("Start a new session to begin real-time summarization.")
             
             # Show previous sessions if any
@@ -1152,7 +1170,8 @@ def main():
                 st.info("No previous sessions found.")
         
         # Add export options
-        if st.session_state.realtime_summarizer.is_session_active() and entries:
+entries = st.session_state.realtime_summarizer.get_entries() if st.session_state.realtime_summarizer.is_session_active() else []
+if st.session_state.realtime_summarizer.is_session_active() and entries:
             st.markdown("### Export Options")
             
             export_format = st.radio("Choose export format:", ["Text", "Markdown", "PDF"], horizontal=True)
