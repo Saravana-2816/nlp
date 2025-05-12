@@ -444,13 +444,232 @@ def main():
         st.session_state.summary_text = ""
     if 'realtime_summary' not in st.session_state:
         st.session_state.realtime_summary = ""
-    if 'user_input' not in st.session_state:  # For storing user input value
-        st.session_state.user_input = ""
     
     # Main tabs
     tabs = st.tabs(["Text Summarizer", "Video Summarizer", "Chat Summarizer", "About"])
     
-    # [... keep all the code for Text Summarizer and Video Summarizer tabs unchanged ...]
+    # Text Summarizer Tab
+    with tabs[0]:
+        st.markdown('<h2 class="sub-header">Text Summarizer</h2>', unsafe_allow_html=True)
+        
+        text_input_method = st.radio("Input Method:", ["Paste Text", "Upload File", "Example Text"])
+        
+        input_text = ""
+        if text_input_method == "Paste Text":
+            input_text = st.text_area("Paste your text here:", height=200)
+        elif text_input_method == "Upload File":
+            uploaded_file = st.file_uploader("Upload a text file:", type=["txt", "pdf", "docx"])
+            if uploaded_file:
+                try:
+                    # Simple handling for txt files
+                    if uploaded_file.name.endswith('.txt'):
+                        input_text = uploaded_file.getvalue().decode('utf-8')
+                    # For PDF and DOCX, you'd need additional libraries
+                    elif uploaded_file.name.endswith('.pdf'):
+                        st.warning("PDF support requires PyPDF2 library.")
+                    elif uploaded_file.name.endswith('.docx'):
+                        st.warning("DOCX support requires python-docx library.")
+                except Exception as e:
+                    st.error(f"Error reading file: {e}")
+        elif text_input_method == "Example Text":
+            input_text = """Artificial intelligence (AI) is intelligence demonstrated by machines, as opposed to natural intelligence displayed by animals including humans. AI research has been defined as the field of study of intelligent agents, which refers to any system that perceives its environment and takes actions that maximize its chance of achieving its goals. The term "artificial intelligence" had previously been used to describe machines that mimic and display human cognitive skills that are associated with the human mind, such as learning and problem-solving. This definition has since been rejected by major AI researchers who now describe AI in terms of rationality and acting rationally, which does not limit how intelligence can be articulated. AI applications include advanced web search engines, recommendation systems, understanding human speech, self-driving cars, automated decision-making, and competing at the highest level in strategic game systems. As machines become increasingly capable, tasks considered to require "intelligence" are often removed from the definition of AI, a phenomenon known as the AI effect."""
+        
+        if input_text:
+            with st.expander("Text Analysis Options", expanded=True):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    summary_length = st.slider("Summary Length (words):", 50, 300, 150)
+                    summary_type = st.selectbox("Summary Type:", ["Concise", "Detailed", "Bullets", "Persona-based"])
+                    
+                    if summary_type == "Persona-based":
+                        persona = st.selectbox("Select Persona:", 
+                                              ["Teacher", "Executive", "Friend", "Journalist", "Sarcastic", "Steve Jobs"])
+                
+                with col2:
+                    analysis_options = st.multiselect("Additional Analysis:", 
+                                                     ["Word Cloud", "Key Entities", "Sentiment Analysis", "Keywords/Topics"])
+            
+            if st.button("Analyze Text"):
+                with st.spinner("Analyzing text..."):
+                    # Summarization
+                    if summary_type == "Persona-based":
+                        summary = get_persona_summary(input_text, persona.lower())
+                        st.markdown(f'<div class="summary-box persona-{persona.lower()}">{summary}</div>', unsafe_allow_html=True)
+                    else:
+                        if summary_type == "Concise":
+                            min_length, max_length = 30, summary_length
+                        elif summary_type == "Detailed":
+                            min_length, max_length = summary_length // 2, summary_length * 2
+                        else:  # Bullets
+                            min_length, max_length = 30, summary_length
+                        
+                        summary = summarize_text(input_text, max_length=max_length, min_length=min_length, summarizer=summarizer)
+                        
+                        if summary_type == "Bullets":
+                            # Convert to bullet points
+                            sentences = re.split(r'(?<=[.!?])\s+', summary)
+                            bullets = "\n".join([f"• {s}" for s in sentences if s.strip()])
+                            st.markdown(f'<div class="summary-box">{bullets}</div>', unsafe_allow_html=True)
+                        else:
+                            st.markdown(f'<div class="summary-box">{summary}</div>', unsafe_allow_html=True)
+                    
+                    # Additional Analysis
+                    if "Word Cloud" in analysis_options:
+                        st.subheader("Word Cloud")
+                        wc_fig = generate_wordcloud(input_text)
+                        if wc_fig:
+                            st.pyplot(wc_fig)
+                    
+                    if "Key Entities" in analysis_options and spacy_model:
+                        st.subheader("Key Entities")
+                        entities = extract_entities(input_text, spacy_model)
+                        if entities:
+                            # Group entities by label
+                            entity_groups = defaultdict(list)
+                            for text, label in entities:
+                                entity_groups[label].append(text)
+                            
+                            # Display as expandable sections
+                            for label, items in entity_groups.items():
+                                with st.expander(f"{label} ({len(items)})"):
+                                    st.write(", ".join(set(items)))
+                    
+                    if "Sentiment Analysis" in analysis_options and spacy_model:
+                        st.subheader("Sentiment Analysis")
+                        sentiment, polarity = analyze_sentiment(input_text, spacy_model)
+                        
+                        # Create sentiment visualization
+                        fig, ax = plt.subplots(figsize=(10, 2))
+                        cmap = plt.cm.RdYlGn
+                        norm = plt.Normalize(-1, 1)
+                        
+                        # Create color bar
+                        ax.imshow([[norm(polarity)]], cmap=cmap, aspect='auto')
+                        ax.set_xticks([])
+                        ax.set_yticks([])
+                        
+                        # Add sentiment label
+                        ax.text(0, 0, f"{sentiment.capitalize()} ({polarity:.2f})", 
+                               ha='center', va='center', fontsize=14, 
+                               color='black' if -0.3 < polarity < 0.3 else 'white')
+                        
+                        st.pyplot(fig)
+                    
+                    if "Keywords/Topics" in analysis_options and spacy_model:
+                        st.subheader("Keywords/Topics")
+                        keywords = extract_keywords(input_text, spacy_model, top_n=15)
+                        
+                        if keywords:
+                            # Create horizontal bar chart
+                            fig, ax = plt.subplots(figsize=(10, 5))
+                            keywords_df = pd.DataFrame(keywords, columns=['Keyword', 'Frequency'])
+                            keywords_df = keywords_df.sort_values('Frequency')
+                            
+                            sns.barplot(x='Frequency', y='Keyword', data=keywords_df, palette='viridis', ax=ax)
+                            ax.set_title('Top Keywords')
+                            
+                            st.pyplot(fig)
+                    
+                    # Download options
+                    st.subheader("Download Results")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown(
+                            get_file_download_link(summary, "summary.txt", "Download Summary"),
+                            unsafe_allow_html=True
+                        )
+                    
+                    with col2:
+                        # Full analysis as Markdown
+                        full_analysis = f"""# Text Analysis Results
+
+## Summary
+{summary}
+
+## Original Text Length
+{len(input_text.split())} words
+
+## Analysis Timestamp
+{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+"""
+                        st.markdown(
+                            get_file_download_link(full_analysis, "analysis.md", "Download Full Analysis"),
+                            unsafe_allow_html=True
+                        )
+    
+    # Video Summarizer Tab
+    with tabs[1]:
+        st.markdown('<h2 class="sub-header">Video Summarizer</h2>', unsafe_allow_html=True)
+        
+        video_input_method = st.radio("Video Input Method:", ["Upload Video", "YouTube URL"])
+        
+        video_file = None
+        video_title = "Video"
+        
+        if video_input_method == "Upload Video":
+            video_file = st.file_uploader("Upload a video file:", type=["mp4", "mov", "avi"])
+        else:  # YouTube URL
+            youtube_url = st.text_input("Enter YouTube URL:")
+            if youtube_url and PYTUBE_AVAILABLE:
+                if st.button("Download and Process YouTube Video"):
+                    with st.spinner("Downloading video from YouTube..."):
+                        video_data, video_title = download_youtube_video(youtube_url)
+                        if video_data:
+                            # Create a BytesIO object from the video data
+                            video_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+                            video_file.write(video_data)
+                            video_file.close()
+                            
+                            # Use the file path to create a file-like object that Streamlit can use
+                            video_file = open(video_file.name, 'rb')
+                            st.success(f"Downloaded: {video_title}")
+        
+        if video_file:
+            # Display video preview
+            st.video(video_file)
+            
+            # Process video
+            if st.button("Analyze Video"):
+                with st.spinner("Processing video..."):
+                    # Extract frames and audio
+                    frames, audio_text, total_frames, fps = process_video(video_file)
+                    
+                    if frames:
+                        st.success(f"Extracted {len(frames)} frames and {len(audio_text.split())} words of audio")
+                        
+                        # Display selected frames
+                        st.subheader("Key Frames")
+                        
+                        # Display frames in a grid
+                        cols = st.columns(3)
+                        for i, frame in enumerate(frames[:9]):  # Show up to 9 frames
+                            with cols[i % 3]:
+                                st.image(frame, caption=f"Frame {i}", use_column_width=True)
+                        
+                        # Audio transcription
+                        if audio_text:
+                            st.subheader("Audio Transcription")
+                            st.markdown(f'<div class="info-text">{audio_text}</div>', unsafe_allow_html=True)
+                            
+                            # Summarize audio
+                            if len(audio_text.split()) > 50:
+                                st.subheader("Audio Summary")
+                                audio_summary = summarize_text(audio_text, max_length=150, min_length=40, summarizer=summarizer)
+                                st.markdown(f'<div class="summary-box">{audio_summary}</div>', unsafe_allow_html=True)
+                        
+                        # Video metadata
+                        st.subheader("Video Information")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Total Frames", f"{total_frames}")
+                        with col2:
+                            st.metric("Frame Rate", f"{fps:.2f} fps")
+                        with col3:
+                            st.metric("Duration", f"{total_frames/fps:.2f} seconds")
+                    else:
+                        st.error("Failed to process video.")
     
     # Chat Summarizer Tab
     with tabs[2]:
@@ -459,8 +678,8 @@ def main():
         # Chat interface
         chat_container = st.container()
         
-        # Input area - Use a key different from the session state variable
-        user_input = st.text_input("Type your message:", key="chat_input_widget", value=st.session_state.user_input)
+        # Input area
+        user_input = st.text_input("Type your message:", key="chat_input")
         col1, col2, col3 = st.columns([3, 1, 1])
         
         with col1:
@@ -484,13 +703,76 @@ def main():
                         st.session_state.realtime_summary, user_input
                     )
                     
-                    # Clear input by updating session state variable
-                    st.session_state.user_input = ""
+                    # Clear input
+                    st.session_state.chat_input = ""
         
-        # [... keep the rest of the Chat Summarizer tab code unchanged ...]
+        with col2:
+            if st.button("Summarize Chat"):
+                if st.session_state.chat_history:
+                    st.session_state.summary_text = get_chat_summary(st.session_state.chat_history)
+        
+        with col3:
+            if st.button("Clear Chat"):
+                st.session_state.chat_history = []
+                st.session_state.summary_text = ""
+                st.session_state.realtime_summary = ""
+        
+        # Display chat history
+        with chat_container:
+            for i, entry in enumerate(st.session_state.chat_history):
+                alignment = "flex-end" if entry["is_user"] else "flex-start"
+                bgcolor = "user-message" if entry["is_user"] else "chat-message"
+                
+                # Add "unseen" class if
+                # Display chat history
+        with chat_container:
+            for i, entry in enumerate(st.session_state.chat_history):
+                alignment = "flex-end" if entry["is_user"] else "flex-start"
+                bgcolor = "user-message" if entry["is_user"] else "chat-message"
+                
+                # Add "unseen" class if message is unseen
+                if not entry["seen"]:
+                    bgcolor += " unseen-message"
+                    # Mark as seen
+                    st.session_state.chat_history[i]["seen"] = True
+                
+                st.markdown(f"""
+                <div style="display: flex; justify-content: {alignment}; margin-bottom: 10px;">
+                    <div class="{bgcolor}" style="max-width: 80%;">
+                        <small>{entry["timestamp"]}</small><br>
+                        {entry["message"]}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # Display chat summary if available
+        if st.session_state.summary_text:
+            st.markdown("---")
+            st.subheader("Chat Summary")
+            st.markdown(f'<div class="summary-box">{st.session_state.summary_text}</div>', unsafe_allow_html=True)
+        
+        # Display real-time summary
+        if st.session_state.realtime_summary:
+            st.markdown("---")
+            st.subheader("Real-time Context Understanding")
+            st.markdown(f'<div class="realtime-update">{st.session_state.realtime_summary}</div>', unsafe_allow_html=True)
+            
+            # Add persona summaries
+            if st.checkbox("Show Persona Perspectives"):
+                st.subheader("Different Perspectives")
+                
+                personas = ["Teacher", "Executive", "Friend"]
+                cols = st.columns(len(personas))
+                
+                for i, persona in enumerate(personas):
+                    with cols[i]:
+                        persona_summary = get_persona_summary(st.session_state.realtime_summary, persona.lower())
+                        st.markdown(f'<div class="chat-message persona-{persona.lower()}">'
+                                    f'<strong>{persona}:</strong><br>{persona_summary}</div>', 
+                                    unsafe_allow_html=True)
     
-    # [... keep the About tab code unchanged ...]
-     with tabs[3]:
+    # About Tab
+    with tabs[3]:
         st.markdown('<h2 class="sub-header">About This App</h2>', unsafe_allow_html=True)
         
         st.markdown("""
