@@ -1,0 +1,16 @@
+streamlit
+spacy
+spacytextblob
+transformers
+numpy 
+pandas 
+transformers
+json
+datetime
+opencv-python
+seaborn
+SpeechRecognition
+random
+os
+matplotlib
+wordcloud
